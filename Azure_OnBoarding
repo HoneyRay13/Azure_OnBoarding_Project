@@ -1,0 +1,233 @@
+function azure_OnBoarding() {
+
+  let new_Tickets_sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("new_Tickets");
+  let user_configuration_sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("user_configuration");
+  let email_Templates_sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("email_Templates");
+  let system_configuration_sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("system_configuration");
+
+  // Get the data from each sheet
+
+  let new_Tickets_data = new_Tickets_sheet.getDataRange().getValues();
+  let lastRow1 = new_Tickets_sheet.getLastRow();
+  let column1 = 5;
+
+  let user_configuration_data = user_configuration_sheet.getDataRange().getValues();
+  let lastRow = user_configuration_sheet.getLastRow();
+  let column = 7;
+
+  let email_Templates_data = email_Templates_sheet.getDataRange().getValues();
+  let system_configuration_data = system_configuration_sheet.getDataRange().getValues();
+
+  
+  for (let row = 2; row <= lastRow; row++) {
+
+    let isCreateUserEmailSent = user_configuration_sheet.getRange(row, column).getValue();
+    let isUserAssignedToProject = user_configuration_sheet.getRange(row,column).getValue();
+    let areTicketsAssigned = user_configuration_sheet.getRange(row, column).getValue();
+    let isGetStartEmailSent = user_configuration_sheet.getRange(row, column).getValue();
+    let isUserAddedToSlack = user_configuration_sheet.getRange(row, column).getValue();
+    let isUserAddedToCalendar = user_configuration_sheet.getRange(row, column).getValue();
+
+    let user_name = user_configuration_data[row-1][0];
+    let admin_message = email_Templates_data[2][2];
+    let admin_recipient = system_configuration_data[1][1];
+    let subject1 = email_Templates_data[2][1];
+    let system = user_configuration_data[row-1][2];
+    let email = user_configuration_data[row-1][1];
+      
+    
+    let user_Project = user_configuration_data[row-1][3];
+    let assignee_displayName = user_configuration_data[row-1][0];
+
+    let user_message = email_Templates_data[1][2];
+    let user_recipient = email;
+    let subject2 = email_Templates_data[1][1];
+    let admin_name = system_configuration_data[1][0]
+   
+
+    let attendeeEmail = email;
+    let startDate = system_configuration_data[8][1];
+    let endDate = system_configuration_data[9][1];
+    
+    // let userGmail = email
+    let slackToken = system_configuration_data[6][1];
+    let channelId = system_configuration_data[7][1]; 
+   
+   
+    admin_message = admin_message.replaceAll('<name>', user_name).replaceAll('<system>', system);   
+    subject1 = subject1.replaceAll('<System>', system).replaceAll('<Email>', email);
+   
+  //  email will be sent to the admin with the given subject and message.
+
+    try {
+      GmailApp.sendEmail(admin_recipient, subject1, admin_message);
+      user_configuration_sheet.getRange(row, 7).setValue("Yes");
+    } catch (error) {
+      Logger.log('Failed to send email: ' + error);
+    }
+
+    if ( isCreateUserEmailSent === 'Yes'){
+      user_configuration_sheet.getRange(row,8).setValue("Yes");
+      Logger.log('adminEmailsend');
+    } else {
+      logger.log("User is not assigned to a project");
+    }
+    
+  // Tickets will be created to the system with the given summary, description, estimatedTime, system, project
+
+    if (isCreateUserEmailSent === 'Yes' && isUserAssignedToProject === 'Yes') {
+
+      let organization = 'AzureProjects15';
+      let pat = 'lc343mnitdbcz4v2i4xn63ev5eeyrzh6zs4qcuye3njfqau4cx2a';
+      let apiVersion = '7.0';
+      let supportedAPIVersions = ['6.1', '7.0'];
+  
+      if (!supportedAPIVersions.includes(apiVersion)) {
+        Logger.log("API version is unsupported");
+      }
+    
+      for (let m=2; m<=lastRow1; m++) {
+        let project = new_Tickets_sheet.getRange(m, column1).getValue();
+        let summary = new_Tickets_data[m - 1][0];
+        let description = new_Tickets_data[m - 1][1];
+        let estimated_Time = new_Tickets_data[m - 1][2];
+          
+        if (project == user_Project) {
+        let payload = [{
+          'op': 'add',
+          'path': '/fields/System.Title',
+          'value': summary
+        },
+        {
+          'op': 'add',
+          'path': '/fields/System.Description',
+          'value': description
+        },
+        {
+          'op': 'add',
+          'path': '/fields/System.AssignedTo',
+          'value': {'displayName': assignee_displayName}
+        },
+        {
+          'op': 'add',
+          'path': '/fields/Microsoft.VSTS.Scheduling.Effort',
+          'value': estimated_Time
+        }];
+        let url = 'https://dev.azure.com/' + organization + '/' + project + '/_apis/wit/workitems/$Issue?api-version=' + apiVersion;
+        let options = {
+          "method": "post",
+          "headers": {
+            "Authorization": "Basic " + Utilities.base64Encode(":" + pat),
+            "Content-Type": "application/json-patch+json"
+          },
+          "payload": JSON.stringify(payload)
+        };
+
+        let response = UrlFetchApp.fetch(url, { ...options, muteHttpExceptions: true });
+
+        if (response.getResponseCode() === 200) {
+          user_configuration_sheet.getRange(row, 9).setValue("Yes");
+          // Logger.log("Tickets are assigned")
+        } else {
+          Logger.log("API call failed with response code " + response.getResponseCode());
+        }
+
+//  getstarted email will be sent to the specified user 
+
+    if (isCreateUserEmailSent === 'Yes' && isUserAssignedToProject === 'Yes'  && areTicketsAssigned === 'Yes') {
+      user_message = user_message.replaceAll('<Name>', user_name).replaceAll('<Admin Name>', admin_name);   
+      subject2 = subject2.replaceAll('<Name>', user_name);
+
+    try {
+      GmailApp.sendEmail(user_recipient, subject2, user_message);
+      user_configuration_sheet.getRange(row, 10).setValue("Yes");
+    } catch (error) {
+      Logger.log('Failed to send email to user: ' + error);
+    }
+
+//  user will be added to the slack channel 
+
+    if (isCreateUserEmailSent === 'Yes' && isUserAssignedToProject === 'Yes'  && areTicketsAssigned === 'Yes' &&  isGetStartEmailSent === 'Yes'){
+      let inviteUrl = "https://slack.com/api/conversations.invite";
+      let lookupUrl = "https://slack.com/api/users.lookupByEmail";
+      let options = {
+      method: "post",
+      headers: {
+        Authorization: 'Bearer ' + slackToken,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      payload: {
+        email: email,
+      },
+    };
+      let response = UrlFetchApp.fetch(lookupUrl, options);
+      let json = JSON.parse(response.getContentText());
+      let userId=json.user.id;
+      
+      let invite = {
+      method: "post",
+      headers: {
+        Authorization: 'Bearer '+ slackToken,
+        "Content-Type": "application/json",
+      },
+      payload: JSON.stringify({
+        channel: channelId,
+        users: userId,
+      }),
+      };
+    try {
+      response1 = UrlFetchApp.fetch(inviteUrl, invite);
+      user_configuration_sheet.getRange(row, 5).setValue("Yes")
+    } catch (error) {
+      if (error === "already_in_channel") {
+        user_configuration_sheet.getRange(row, 5).setValue("Yes")
+      } else {
+        logger.log('error :' + error)
+      }
+      }
+    }
+
+// user will be added to the calendar meeting 
+
+    if (isCreateUserEmailSent === 'Yes' && isUserAssignedToProject === 'Yes'  && areTicketsAssigned === 'Yes' &&  isGetStartEmailSent === 'Yes' && isUserAddedToSlack === 'Yes'){
+
+      let calendarId = 'honey.ray@madgicaltechdom.com';
+      let calendar = CalendarApp.getCalendarById(calendarId);
+
+      if (calendar === null) {
+        Logger.log('calendar not found',calendarId);
+      }
+
+      let calEvents = calendar.getEvents(startDate,endDate);
+      
+      for (let i=0; i<calEvents.length; i++){
+        let event = calEvents[i];
+        let eventName = (event.getTitle());
+
+        if (eventName !== "Madgical Productivity Training"){
+          try{
+            event.addGuest(attendeeEmail);
+            user_configuration_sheet.getRange(row, 6).setValue("Yes");
+          } catch (error) {
+            logger.log('Attendee not added to the weekly meeting :' + attendeeEmail)
+          }
+        }
+      
+      }   
+        
+    }  
+    
+   }
+
+  }
+
+  }
+  
+  }
+    if (isCreateUserEmailSent === 'Yes' && isUserAssignedToProject === 'Yes'  && areTicketsAssigned === 'Yes' &&  isGetStartEmailSent === 'Yes' && isUserAddedToSlack === 'Yes' && isUserAddedToCalendar === 'Yes'){
+          Logger.log('onboarding process complete');
+        }
+  } 
+  
+} 
+
